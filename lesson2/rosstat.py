@@ -12,31 +12,34 @@
 """
 import json
 
-import pandas
 import requests
 from bs4 import BeautifulSoup as bs
 
+from lesson3.products_repository import ProductsRepository
+
 
 def main():
+    product_kind = '/molochnie_produkti/'
+    product_type = 'siri'
+    end_page = int(input('Сколько нужно страниц?: '))
+    find_and_save_products(product_kind, product_type, end_page)
+
+    min_total_score = input('Введите минимальный рейтинг для поиска или любую букву для выхода: ')
+    if min_total_score.isdigit():
+        for j in ProductsRepository().find_products_by_total_score(product_type, int(min_total_score)):
+            print(j)
+    print('*** Конец ***')
+
+
+def find_and_save_products(product_kind, product_type, end_page):
     host = 'https://roscontrol.com'
     base_url = host + '/category/produkti'
-    product_kind = '/molochnie_produkti'
-    product_type = '/siri'
-    end_page = int(input('Сколько нужно страниц?: '))
-
+    repository = ProductsRepository()
     url = base_url + product_kind + product_type
 
     with open('headers.json', 'r', encoding='utf-8') as headers_source:
         headers = json.load(headers_source)
 
-    products_info = pandas.DataFrame(columns=[
-        'name',
-        'safety',
-        'naturalness',
-        'nutrition_value',
-        'quality',
-        'total_score'
-    ])
     while url:
         page = url.split('=').pop()
         page = int(page) if page.isdigit() else 1
@@ -50,7 +53,7 @@ def main():
         for product_link in products_links:
             product_response = requests.get(host + product_link['href'])
             product_info = get_product_info(bs(product_response.text, 'html.parser'))
-            products_info = pandas.concat([products_info, product_info])
+            repository.save_one_product(product_type, product_info)
 
         if page >= end_page:
             break
@@ -59,10 +62,7 @@ def main():
             url = host + dom.select('a.page-num.page-item.last')[0]['href']
         except:
             url = None
-
-    products_info.index = range(1, len(products_info) + 1)
-    products_info.to_excel('products.xlsx')
-    print(f'{len(products_info)} записей успешно сохранены в products.xlsx')
+    print(f'Загружено {repository.products_count(product_type)} записей.')
 
 
 def get_product_info(dom):
@@ -82,14 +82,14 @@ def get_product_info(dom):
     except:
         total_score = None
 
-    return pandas.DataFrame(data={
-        'name': [name],
-        'safety': [safety],
-        'naturalness': [naturalness],
-        'nutrition_value': [nutrition_value],
-        'quality': [quality],
-        'total_score': [total_score]
-    })
+    return {
+        'name': name,
+        'safety': safety,
+        'naturalness': naturalness,
+        'nutrition_value': nutrition_value,
+        'quality': quality,
+        'total_score': total_score
+    }
 
 
 if __name__ == '__main__':

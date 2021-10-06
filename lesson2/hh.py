@@ -14,32 +14,30 @@
 """
 import json
 
-import pandas
 import requests
 from bs4 import BeautifulSoup as bs
+
+from lesson3.professions_repository import ProfessionRepository
 
 
 def main():
     profession = input('Какую профессию будем искать?(транслит): ')
     end_page = int(input('Сколько нужно страниц?: '))
+    find_and_save_jobs(end_page, profession)
+
+    min_salary = input('Введите минимальную сумму или любую букву для выхода: ')
+    if min_salary.isdigit():
+        for j in ProfessionRepository().find_job_by_min_salary('programmist', int(min_salary)):
+            print(j)
+    print('*** Конец ***')
+
+
+def find_and_save_jobs(end_page, profession):
     base_url = 'https://hh.ru'
-
     url = base_url + '/vacancies/' + profession
-
+    repository = ProfessionRepository()
     with open('headers.json', 'r', encoding='utf-8') as headers_source:
         headers = json.load(headers_source)
-
-    jobs_info = pandas.DataFrame(
-        columns=[
-            'Название',
-            'Cсылка',
-            'Мин. Зарплата',
-            'Макс. Зарплата',
-            'Валюта',
-            'Работодатель'
-        ]
-    )
-
     while url:
         page = url.split('=').pop()
         page = int(page) + 1 if page.isdigit() else 1
@@ -52,7 +50,7 @@ def main():
 
         for job in jobs:
             job_info = get_job_info(job)
-            jobs_info = pandas.concat([jobs_info, job_info])
+            repository.save_one_job(profession, job_info)
 
         if page >= end_page:
             break
@@ -63,10 +61,7 @@ def main():
             url = base_url + next_button['href']
         else:
             url = None
-
-    jobs_info.index = range(1, len(jobs_info) + 1)
-    jobs_info.to_excel('jobs.xlsx')
-    print(f'{len(jobs_info)} записей записано в jobs.xlsx')
+    print(f'Загружено {repository.jobs_count(profession)} записей')
 
 
 def get_job_info(job):
@@ -81,14 +76,15 @@ def get_job_info(job):
         .get_text() \
         .replace('\xa0', ' ')
 
-    return pandas.DataFrame(data={
-        'Название': [job_name],
-        'Cсылка': [job_link],
-        'Мин. Зарплата': [min_salary],
-        'Макс. Зарплата': [max_salary],
-        'Валюта': [currency],
-        'Работодатель': [job_owner]
-    })
+    return {
+        '_id': job_link,
+        'name': job_name,
+        'link': job_link,
+        'min_salary': min_salary,
+        'max_salary': max_salary,
+        'currency': currency,
+        'owner': job_owner
+    }
 
 
 def get_salary_values(job_salary_span):
